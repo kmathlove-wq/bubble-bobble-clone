@@ -153,8 +153,11 @@
         hb = this.box();
       }
     }
-    // 내려가려는데 벽에 막히면 반대쪽으로 (그쪽 발판 끝에서 떨어짐)
-    if (hitWall && this._descend != null) { this._descend = -this._descend; this.wantDir = this._descend; }
+    // 땅에서 내려가려는데 벽에 막히면 반대쪽으로 (공중에서 발판 모서리에 스친 건 무시)
+    if (hitWall && this.onGround && this._descend != null) {
+      this._descend = -this._descend;
+      this.wantDir = this._descend;
+    }
 
     // 세로 이동 + 착지
     this.y += this.vy * dt;
@@ -171,9 +174,10 @@
     }
     if (!playerBelow) this._descend = null;
 
-    // ----- 주인공이 위에 있으면 점프해서 쫓아간다 -----
+    // ----- 점프 -----
+    // 주인공이 아래에 있으면 절대 점프하지 않는다 (걸어서 발판 끝으로 내려가야 하니까).
     this.jumpCd -= dt;
-    if (this.onGround && this.jumpCd <= 0) {
+    if (this.onGround && this.jumpCd <= 0 && !playerBelow) {
       if (playerAbove && (hitWall || Math.abs(dx) < 44)) {
         this.vy = -C.JUMP_V * (TYPE[this.type].jump + (this.angry ? 0.05 : 0));
         this.jumpCd = BB.util.rand(0.3, 0.7);
@@ -181,8 +185,8 @@
         this.vy = -C.JUMP_V * TYPE[this.type].jump;
         this.jumpCd = BB.util.rand(0.25, 0.55);
       } else if (this.type === 'hopper') {
-        this.vy = -C.JUMP_V * TYPE[this.type].jump * 0.7;
-        this.jumpCd = BB.util.rand(0.12, 0.4);
+        this.vy = -C.JUMP_V * TYPE[this.type].jump * 0.6;
+        this.jumpCd = BB.util.rand(0.25, 0.55);
       } else {
         this.jumpCd = BB.util.rand(0.15, 0.5);
       }
