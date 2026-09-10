@@ -23,10 +23,13 @@
     this.stateT = 0;
     this.vx = SHOOT_SPEED * this.dir;
     this.vy = 0;
-    this.trapped = null;   // 가둔 적 (M4)
+    this.trapped = null;   // 가둔 적
+    this.trapT = 0;        // 가둔 뒤 흐른 시간 (오래되면 적 탈출)
     this.drift = (Math.random() < 0.5 ? -1 : 1) * 8; // 상승 중 옆으로 살랑
     this.dead = false;
   };
+
+  var TRAP_ESCAPE = 5.5; // 이 시간 지나면 갇힌 적이 탈출
 
   BB.Bubble.prototype.box = function () {
     return { x: this.x, y: this.y, w: this.w, h: this.h };
@@ -48,6 +51,41 @@
   BB.Bubble.prototype.update = function (dt, level) {
     this.age += dt;
     this.stateT += dt;
+
+    // --- 갇힌 적 처리 ---
+    if (this.trapped) {
+      if (this.trapped.state !== 'trapped' || this.trapped.dead) {
+        this.trapped = null;              // 적이 죽었거나 이미 탈출
+      } else {
+        this.trapT += dt;
+        // 적을 거품 가운데로
+        this.trapped.x = this.x + (this.w - this.trapped.w) / 2;
+        this.trapped.y = this.y + (this.h - this.trapped.h) / 2;
+        if (this.trapT >= TRAP_ESCAPE && this.state !== 'pop') {
+          this.trapped._escape();
+          this.trapped = null;
+          this.pop();
+        }
+      }
+    } else if (this.state === 'shoot' || this.state === 'float' || this.state === 'rise') {
+      // --- 지나가는 적 가두기 ---
+      if (BB.enemies) {
+        for (var ei = 0; ei < BB.enemies.length; ei++) {
+          var en = BB.enemies[ei];
+          if (en.state !== 'walk') continue;
+          if (BB.util.aabb(this.box(), en.box())) {
+            en.trapInto(this);
+            this.trapped = en;
+            this.trapT = 0;
+            this.state = 'float';
+            this.stateT = 0;
+            this.vx = 0;
+            if (BB.sfx) BB.sfx.play('trap');
+            break;
+          }
+        }
+      }
+    }
 
     if (this.state === 'shoot') {
       this.x += this.vx * dt;

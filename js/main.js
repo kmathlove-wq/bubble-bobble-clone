@@ -15,6 +15,7 @@
     loadProgress: 0,
     stateTime: 0,         // 지금 상태로 바뀐 뒤 흐른 시간(초)
     paused: false,
+    roundFruitScore: 0,   // 이번 판에서 과일로 번 점수 (ROUND CLEAR 연출용)
     setState: function (s) { this.state = s; this.stateTime = 0; }
   };
 
@@ -40,15 +41,28 @@
     BB.game.setState('TITLE');
   });
 
-  // --- 라운드 로드 (M2에서 BB.Level / BB.LEVELS 생기면 동작) ---
+  // --- 라운드 로드 ---
   function loadRound(n) {
     if (!BB.LEVELS || !BB.Level || !BB.Player) return;
-    var def = BB.LEVELS[n - 1] || BB.LEVELS[0];
+    var def = BB.LEVELS[(n - 1) % BB.LEVELS.length] || BB.LEVELS[0];
     BB.level = new BB.Level(def);
     BB.player = new BB.Player(BB.level.playerStart.x, BB.level.playerStart.y);
     BB.bubbles = [];
+    BB.fruits = [];
+    BB.enemies = [];
+    BB.game.roundFruitScore = 0;
+    for (var i = 0; i < BB.level.enemySpawns.length; i++) {
+      var e = BB.level.enemySpawns[i];
+      if (BB.Enemy) BB.enemies.push(new BB.Enemy(e.type, e.x, e.y));
+    }
   }
   BB.loadRound = loadRound;
+
+  function respawnPlayer() {
+    var st = BB.level.playerStart;
+    BB.player = new BB.Player(st.x, st.y);
+    BB.bubbles = [];
+  }
 
   function startGame() {
     BB.game.score = 0;
@@ -56,6 +70,88 @@
     BB.game.round = 1;
     loadRound(1);
     BB.game.setState('PLAYING');
+  }
+
+  function addScore(n) {
+    var before = BB.game.score;
+    BB.game.score += n;
+    // 3만점마다 목숨 +1
+    if (Math.floor(BB.game.score / 30000) > Math.floor(before / 30000)) {
+      BB.game.lives++;
+      if (BB.sfx) BB.sfx.play('extend');
+    }
+    if (BB.game.score > BB.game.hiScore) {
+      BB.game.hiScore = BB.game.score;
+      try { localStorage.setItem('bb_hiscore', String(BB.game.hiScore)); } catch (e) {}
+    }
+  }
+  BB.addScore = addScore;
+
+  // --- 주인공이 갇힌 거품에 부딪힘 → 연쇄로 터뜨리기 ---
+  function popChain(start) {
+    var queue = [start];
+    var seen = [];
+    var poppedEnemies = [];
+    while (queue.length) {
+      var b = queue.shift();
+      if (seen.indexOf(b) >= 0) continue;
+      seen.push(b);
+      if (b.trapped) { poppedEnemies.push(b.trapped); b.trapped.killByPop(); b.trapped = null; }
+      b.pop();
+      // 닿아 있는 다른 거품도 연쇄
+      for (var i = 0; i < BB.bubbles.length; i++) {
+        var o = BB.bubbles[i];
+        if (seen.indexOf(o) < 0 && o.state !== 'pop' && BB.util.aabb(b.box(), o.box())) {
+          queue.push(o);
+        }
+      }
+    }
+    var count = poppedEnemies.length;
+    if (count > 0) {
+      var tier = BB.fruitTier(count);
+      for (var k = 0; k < poppedEnemies.length; k++) {
+        var en = poppedEnemies[k];
+        BB.fruits.push(new BB.Fruit(en.x, en.y, tier));
+      }
+      if (BB.sfx) BB.sfx.play(count >= 2 ? 'combo' : 'enemyPop');
+    }
+  }
+
+  function playerDie() {
+    if (BB.player.invuln > 0) return;
+    BB.game.lives--;
+    if (BB.sfx) BB.sfx.play('miss');
+    BB.game.setState('MISS');
+  }
+
+  // --- 충돌 처리 ---
+  function handleCollisions() {
+    var p = BB.player;
+    // 주인공 vs 갇힌 거품 → 터뜨리기
+    for (var i = 0; i < BB.bubbles.length; i++) {
+      var b = BB.bubbles[i];
+      if (b.trapped && b.state !== 'pop' && BB.util.aabb(p.box(), b.box())) {
+        popChain(b);
+      }
+    }
+    // 주인공 vs 적
+    for (var j = 0; j < BB.enemies.length; j++) {
+      var e = BB.enemies[j];
+      if ((e.state === 'walk') && BB.util.aabb(p.box(), e.box())) {
+        playerDie();
+        return;
+      }
+    }
+    // 주인공 vs 과일
+    for (var k = BB.fruits.length - 1; k >= 0; k--) {
+      var f = BB.fruits[k];
+      if (BB.util.aabb(p.box(), f.box())) {
+        addScore(f.score);
+        BB.game.roundFruitScore += f.score;
+        if (BB.sfx) BB.sfx.play('fruit');
+        BB.fruits.splice(k, 1);
+      }
+    }
   }
 
   // --- 업데이트 ---
@@ -69,13 +165,48 @@
     } else if (s === 'PLAYING') {
       if (BB.input.pressed('pause')) BB.game.paused = !BB.game.paused;
       if (BB.game.paused) return;
-      if (BB.level && BB.level.update) BB.level.update(dt);
-      if (BB.player && BB.player.update) BB.player.update(dt, BB.level);
-      if (BB.bubbles) {
-        for (var i = 0; i < BB.bubbles.length; i++) BB.bubbles[i].update(dt, BB.level);
-        for (var j = BB.bubbles.length - 1; j >= 0; j--) {
-          if (BB.bubbles[j].dead) BB.bubbles.splice(j, 1);
+
+      BB.level.update(dt);
+      BB.player.update(dt, BB.level);
+
+      var i, j;
+      for (i = 0; i < BB.bubbles.length; i++) BB.bubbles[i].update(dt, BB.level);
+      for (i = 0; i < BB.enemies.length; i++) BB.enemies[i].update(dt, BB.level, BB.player);
+      for (i = 0; i < BB.fruits.length; i++) BB.fruits[i].update(dt, BB.level);
+
+      handleCollisions();
+
+      for (j = BB.bubbles.length - 1; j >= 0; j--) if (BB.bubbles[j].dead) BB.bubbles.splice(j, 1);
+      for (j = BB.enemies.length - 1; j >= 0; j--) if (BB.enemies[j].dead) BB.enemies.splice(j, 1);
+      for (j = BB.fruits.length - 1; j >= 0; j--) if (BB.fruits[j].dead) BB.fruits.splice(j, 1);
+
+      // 적을 다 잡았으면 판 클리어
+      if (BB.enemies.length === 0 && BB.game.state === 'PLAYING') {
+        if (BB.sfx) BB.sfx.play('roundClear');
+        BB.game.setState('ROUND_CLEAR');
+      }
+
+    } else if (s === 'MISS') {
+      if (BB.game.stateTime > 1.4) {
+        if (BB.game.lives <= 0) {
+          BB.game.setState('GAME_OVER');
+        } else {
+          respawnPlayer();
+          BB.game.setState('PLAYING');
         }
+      }
+
+    } else if (s === 'ROUND_CLEAR') {
+      if (BB.game.stateTime > 2.2) {
+        BB.game.round++;
+        loadRound(BB.game.round);
+        BB.game.setState('PLAYING');
+      }
+
+    } else if (s === 'GAME_OVER') {
+      if (BB.game.stateTime > 1 &&
+          (BB.input.pressed('jump') || BB.input.pressed('bubble') || BB.input.pressed('start'))) {
+        BB.game.setState('TITLE');
       }
     }
   }
@@ -111,12 +242,40 @@
       if (blink) text('스페이스를 눌러 시작', cx, 272, 16, '#7dff7d');
       text('최고 점수  ' + BB.game.hiScore, cx, 306, 11, '#cccccc');
 
-    } else if (s === 'PLAYING') {
-      if (BB.level && BB.level.draw) BB.level.draw(ctx);
-      if (BB.bubbles) for (var bi = 0; bi < BB.bubbles.length; bi++) BB.bubbles[bi].draw(ctx);
-      if (BB.player && BB.player.draw) BB.player.draw(ctx);
-      if (BB.game.paused) text('일시정지', BB.CONFIG.VW / 2, BB.CONFIG.VH / 2, 16);
+    } else if (s === 'PLAYING' || s === 'MISS' || s === 'ROUND_CLEAR') {
+      drawWorld();
+      var cx2 = BB.CONFIG.VW / 2, cy2 = BB.CONFIG.VH / 2;
+      // 간단 점수 표시 (M6에서 제대로 된 HUD)
+      text('1UP  ' + BB.game.score, 70, 12, 11, '#fff');
+      text('ROUND ' + BB.game.round, BB.CONFIG.VW - 60, 12, 11, '#fff');
+      text('남은 목숨 ' + Math.max(0, BB.game.lives), 60, BB.CONFIG.VH - 12, 10, '#8ef');
+
+      if (s === 'MISS') {
+        text('MISS!', cx2, cy2, 28, '#ff5a5a');
+      } else if (s === 'ROUND_CLEAR') {
+        text('ROUND CLEAR!', cx2, cy2 - 16, 22, '#ffe14d');
+        text('과일 점수  ' + BB.game.roundFruitScore, cx2, cy2 + 16, 13, '#fff');
+      }
+      if (BB.game.paused) text('일시정지', cx2, cy2, 16);
+
+    } else if (s === 'GAME_OVER') {
+      drawWorld();
+      var cnt = Math.max(0, 9 - Math.floor(BB.game.stateTime));
+      text('GAME OVER', BB.CONFIG.VW / 2, BB.CONFIG.VH / 2 - 20, 28, '#ff5a5a');
+      text('점수  ' + BB.game.score, BB.CONFIG.VW / 2, BB.CONFIG.VH / 2 + 12, 14, '#fff');
+      text('계속하려면 스페이스   ' + cnt, BB.CONFIG.VW / 2, BB.CONFIG.VH / 2 + 40, 11, '#ccc');
     }
+  }
+
+  // 게임 월드(지형·거품·적·과일·주인공) 그리기
+  function drawWorld() {
+    if (!BB.level) return;
+    BB.level.draw(ctx);
+    var i;
+    for (i = 0; i < BB.fruits.length; i++) BB.fruits[i].draw(ctx);
+    for (i = 0; i < BB.bubbles.length; i++) BB.bubbles[i].draw(ctx);
+    for (i = 0; i < BB.enemies.length; i++) BB.enemies[i].draw(ctx);
+    if (BB.player) BB.player.draw(ctx);
   }
 
   function text(str, x, y, size, color) {
