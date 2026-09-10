@@ -69,9 +69,11 @@
     var st = BB.level.playerStart;
     BB.player = new BB.Player(st.x, st.y);
     BB.bubbles = [];
-    BB.whale = null;                              // 죽으면 고래는 잠깐 물러남
-    if (BB.level.timeLeft <= 0) BB.level.timeLeft = BB.level.time * 0.4;
-    BB.game.rush = Math.max(0, BB.game.rush - 0.4);
+    BB.whale = null;                              // 죽으면 고래는 물러남
+    // 죽으면 시간을 넉넉히 되돌려준다 (바로 또 HURRY / 고래 나오지 않게)
+    if (BB.level.timeLeft < BB.level.time * 0.55) BB.level.timeLeft = BB.level.time * 0.6;
+    BB.game.rush = Math.max(0, BB.game.rush - 0.5);
+    BB.game.roundElapsed = Math.min(BB.game.roundElapsed, 20);
   }
 
   function startGame() {
@@ -177,7 +179,7 @@
       // --- 난이도: 시간이 지날수록 적이 빨라지고, 얼마 안 남으면 화남 ---
       var t = BB.level, frac = t.timeLeft / t.time;   // 1 → 0
       BB.game.rush = BB.util.clamp((1 - frac) * 1.1 + BB.game.roundElapsed / 90, 0, 1.4);
-      var hurry = t.timeLeft <= t.time * 0.28;
+      var hurry = t.timeLeft <= t.time * 0.22 && t.timeLeft > 0;
       var lastOne = BB.enemies.length === 1;
       for (var a = 0; a < BB.enemies.length; a++) {
         var en = BB.enemies[a];
@@ -320,9 +322,9 @@
       var barW = BB.CONFIG.VW - 24;
       ctx.fillStyle = 'rgba(255,255,255,0.15)';
       ctx.fillRect(12, BB.CONFIG.VH - 4, barW, 3);
-      ctx.fillStyle = frac < 0.28 ? '#ff4444' : '#7dd0ff';
+      ctx.fillStyle = frac < 0.22 ? '#ff4444' : '#7dd0ff';
       ctx.fillRect(12, BB.CONFIG.VH - 4, barW * frac, 3);
-      if (frac < 0.28 && (Math.floor(BB.game.stateTime * 4) % 2) === 0 && BB.level.timeLeft > 0) {
+      if (frac < 0.22 && (Math.floor(BB.game.stateTime * 4) % 2) === 0 && BB.level.timeLeft > 0) {
         text('HURRY!', BB.CONFIG.VW / 2, 28, 16, '#ff5a5a');
       }
       if (BB.whale) text('심술고래 등장! 빨리 깨!', BB.CONFIG.VW / 2, 28, 13, '#ffffff');

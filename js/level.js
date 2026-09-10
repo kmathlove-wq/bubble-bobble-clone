@@ -80,8 +80,7 @@
   };
 
   BB.Level.prototype.update = function (dt) {
-    // 시간은 M5에서 심술고래와 연결. 여기서는 카운트만.
-    if (this.timeLeft > 0) this.timeLeft -= dt;
+    this.timeLeft = Math.max(0, this.timeLeft - dt);
   };
 
   // 위에서 내려오는 box(발밑 y = footY) 가 이 프레임에 어떤 발판 위에 착지하는가?
