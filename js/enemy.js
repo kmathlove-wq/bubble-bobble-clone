@@ -1,10 +1,16 @@
 // ===== enemy.js =====
-// 적 몬스터. M4에서는 '통통이'(walker)만. M5에서 종류·화난 적·심술고래 추가.
+// 적 몬스터 (민결이 설계):
+//  - 항상 주인공을 쫓아온다.
+//  - 걷는 그림: 오른쪽=적1↔적2 반복,  왼쪽=적3↔적4 반복
+//  - 방울1(날아가는 거품)에 닿으면 → 적소멸1 로 변해 위로 떠오른다
+//  - 천장에 붙어 좌우로 흔들린다
+//  - 주인공이 닿으면 → 적소멸2 로 죽고 아이템(과일)을 떨군다
+// (M5에서 종류·화난 적·심술고래 추가)
 (function (BB) {
   var C = BB.CONFIG;
 
   var TYPE = {
-    walker: { speed: 42,  hue: 0,    hop: 1.8 }   // 파랑 (원본 색)
+    walker: { speed: 40, jump: 0.62 }
   };
 
   BB.Enemy = function (type, x, y) {
@@ -13,17 +19,20 @@
     this.h = 13;
     this.x = x + (C.TILE - this.w) / 2;
     this.y = y + (C.TILE - this.h);
-    this.vx = (Math.random() < 0.5 ? -1 : 1) * TYPE[this.type].speed;
+    this.vx = -TYPE[this.type].speed;
     this.vy = 0;
     this.onGround = false;
-    this.state = 'walk';       // 'walk' | 'trapped' | 'dying'
+    this.state = 'walk';      // 'walk' | 'floating' | 'dying'
+    this.face = 'L';          // 'L' | 'R'
     this.angry = false;
     this.animT = 0;
-    this.hopCd = BB.util.rand(1, 3);
+    this.jumpCd = BB.util.rand(0.4, 1.2);
+    this.floatT = 0;
+    this.stuck = false;       // 천장에 붙었나
+    this.wobbleBase = 0;
     this.dyingT = 0;
-    this.captor = null;        // 나를 가둔 거품
     this.dead = false;
-    this._tinted = null;
+    this.dropTier = 1;        // 죽을 때 떨굴 과일 등급 (main 이 정함)
   };
 
   BB.Enemy.prototype.box = function () {
@@ -40,21 +49,36 @@
 
     if (this.state === 'dying') {
       this.dyingT += dt;
-      if (this.dyingT >= 0.42) this.dead = true;
+      if (this.dyingT >= 0.34) this.dead = true;
       return;
     }
 
-    if (this.state === 'trapped') {
-      // 위치는 captor 거품이 정해준다. 거품이 사라졌는데 아직 갇힘이면 탈출.
-      if (!this.captor || this.captor.dead || this.captor.state === 'pop') {
-        this._escape();
+    if (this.state === 'floating') {
+      this.floatT += dt;
+      if (!this.stuck) {
+        this.y -= 70 * dt;
+        // 천장(또는 발판 아랫면)에 닿으면 붙는다
+        var head = { x: this.x + 2, y: this.y - 4, w: this.w - 4, h: 6 };
+        if (this.y <= 6 || (level && level.overlapsSolid(head))) {
+          this.stuck = true;
+          this.wobbleBase = this.x;
+          if (this.y < 2) this.y = 2;
+        }
+      } else {
+        // 천장에 붙어 좌우로 흔들
+        this.x = this.wobbleBase + Math.sin(this.floatT * 3) * 10;
+        this.x = BB.util.clamp(this.x, 2, C.VW - this.w - 2);
       }
       return;
     }
 
-    // --- walk ---
+    // ===== walk: 항상 주인공을 쫓아온다 =====
     var spd = this.speed();
-    if (this.vx > 0) this.vx = spd; else this.vx = -spd;
+    var dir = 0;
+    if (player) dir = (player.x + player.w / 2) > (this.x + this.w / 2) ? 1 : -1;
+    else dir = this.vx > 0 ? 1 : -1;
+    this.vx = dir * spd;
+    this.face = dir > 0 ? 'R' : 'L';
 
     // 중력
     this.vy += C.GRAVITY * dt;
@@ -62,18 +86,19 @@
 
     var prevBottom = this.y + this.h;
     var prevLeft = this.x, prevRight = this.x + this.w;
+    var hitWall = false;
 
-    // 가로 이동 + 벽/발판 옆면에서 방향 전환
+    // 가로 이동 + 벽/발판 옆면
     this.x += this.vx * dt;
-    if (this.x <= 0) { this.x = 0; this.vx = Math.abs(this.vx); }
-    if (this.x + this.w >= C.VW) { this.x = C.VW - this.w; this.vx = -Math.abs(this.vx); }
+    if (this.x <= 0) { this.x = 0; hitWall = true; }
+    if (this.x + this.w >= C.VW) { this.x = C.VW - this.w; hitWall = true; }
     if (level) {
       var hb = this.box();
       for (var i = 0; i < level.solids.length; i++) {
         var s = level.solids[i];
         if (!BB.util.aabb(hb, s)) continue;
-        if (this.vx > 0 && prevRight <= s.x + 0.5) { this.x = s.x - this.w; this.vx = -this.vx; }
-        else if (this.vx < 0 && prevLeft >= s.x + s.w - 0.5) { this.x = s.x + s.w; this.vx = -this.vx; }
+        if (this.vx > 0 && prevRight <= s.x + 0.5) { this.x = s.x - this.w; hitWall = true; }
+        else if (this.vx < 0 && prevLeft >= s.x + s.w - 0.5) { this.x = s.x + s.w; hitWall = true; }
         hb = this.box();
       }
     }
@@ -87,82 +112,63 @@
     }
     BB.util.wrapY(this, C.VH);
 
-    // 발판 끝에서 떨어지지 않게 방향 전환 (통통이는 발판 위를 지킴)
-    if (this.onGround && level) {
-      var aheadX = this.vx > 0 ? this.x + this.w + 2 : this.x - 2;
-      var probe = { x: aheadX, y: this.y + this.h + 1, w: 1, h: 4 };
-      if (!level.overlapsSolid(probe)) this.vx = -this.vx;
-    }
-
-    // 가끔 폴짝
-    this.hopCd -= dt;
-    if (this.hopCd <= 0 && this.onGround) {
-      this.vy = -C.JUMP_V * (this.angry ? 0.62 : 0.42) * TYPE[this.type].hop / 1.8;
-      this.hopCd = BB.util.rand(this.angry ? 0.7 : 1.4, this.angry ? 1.8 : 3.5);
-    }
-
-    // 주인공 쪽으로 살짝 끌림 (같은 높이대면)
-    if (player && Math.abs((player.y + player.h) - (this.y + this.h)) < 24) {
-      if (player.x < this.x && this.vx > 0 && Math.random() < 0.02) this.vx = -this.vx;
-      if (player.x > this.x && this.vx < 0 && Math.random() < 0.02) this.vx = -this.vx;
+    // 벽에 막히거나 / 주인공이 위에 있으면 점프해서 쫓아감
+    this.jumpCd -= dt;
+    if (this.onGround && this.jumpCd <= 0) {
+      var playerAbove = player && (player.y + player.h) < this.y - 6;
+      if (hitWall || playerAbove || Math.random() < 0.15) {
+        this.vy = -C.JUMP_V * TYPE[this.type].jump;
+        this.jumpCd = BB.util.rand(0.5, 1.3);
+      } else {
+        this.jumpCd = BB.util.rand(0.3, 0.8);
+      }
     }
   };
 
-  BB.Enemy.prototype.trapInto = function (bubble) {
-    this.state = 'trapped';
-    this.captor = bubble;
+  // 방울1 에 닿았을 때
+  BB.Enemy.prototype.captureFloat = function () {
+    if (this.state !== 'walk') return;
+    this.state = 'floating';
+    this.floatT = 0;
+    this.stuck = false;
     this.vx = 0; this.vy = 0;
+    if (BB.sfx) BB.sfx.play('trap');
   };
 
-  BB.Enemy.prototype._escape = function () {
-    this.state = 'walk';
-    this.captor = null;
-    this.angry = true;
-    this.vx = (Math.random() < 0.5 ? -1 : 1) * this.speed();
-    this.vy = -60;
-  };
-
-  BB.Enemy.prototype.killByPop = function () {
+  // 주인공이 떠오른 적(적소멸1)에 닿았을 때
+  BB.Enemy.prototype.popKill = function () {
+    if (this.state !== 'floating') return;
     this.state = 'dying';
     this.dyingT = 0;
-    this.captor = null;
-  };
-
-  // 색조 바꾼 스프라이트 캐시 (walker는 hue 0이라 원본 그대로)
-  BB.Enemy.prototype._sprite = function (name) {
-    var img = BB.assets.images[name];
-    var hue = TYPE[this.type].hue;
-    if (!img || hue === 0) return img;
-    return img; // M5에서 hue 회전 구현
   };
 
   BB.Enemy.prototype.draw = function (ctx) {
     var img;
+    var dw = 24, dh = 24;
+
     if (this.state === 'dying') {
-      var fi = 1 + Math.min(2, Math.floor(this.dyingT / 0.14)); // 적소멸1~3
-      img = BB.assets.images['적소멸' + fi];
+      img = BB.assets.images['적소멸2'];
+      if (this.dyingT > 0.18) img = BB.assets.images['적소멸3'] || img;
+    } else if (this.state === 'floating') {
+      img = BB.assets.images['적소멸1'];
     } else {
-      var wf = 1 + (Math.floor(this.animT * 8) % 4);            // 적1~4
-      img = this._sprite('적' + wf);
+      // 걷기: 오른쪽=적1↔적2, 왼쪽=적3↔적4
+      var f = Math.floor(this.animT * 7) % 2;
+      if (this.face === 'R') img = BB.assets.images[f === 0 ? '적1' : '적2'];
+      else                   img = BB.assets.images[f === 0 ? '적3' : '적4'];
     }
     if (!img) return;
 
-    var dw = 24, dh = 24;
     var dx = this.x + this.w / 2 - dw / 2;
     var dy = this.y + this.h - dh + 2;
 
-    ctx.save();
     if (this.angry && this.state === 'walk') {
-      // 화난 적: 붉은 색조 (M5에서 종류별 색조와 합침)
-      ctx.filter = 'brightness(1.1) saturate(1.6) hue-rotate(-40deg)';
-    }
-    var flip = this.state !== 'dying' && this.vx > 0;
-    if (flip) {
-      ctx.translate(dx + dw, dy); ctx.scale(-1, 1);
-      ctx.drawImage(img, 0, 0, dw, dh);
+      ctx.save();
+      ctx.filter = 'brightness(1.15) saturate(1.8) hue-rotate(-45deg)';
+      ctx.drawImage(img, dx, dy, dw, dh);
+      ctx.restore();
     } else {
       ctx.drawImage(img, dx, dy, dw, dh);
     }
-    ctx.restore();
   };
 })(window.BB);
