@@ -5,8 +5,8 @@
 
 ## 플레이
 
-- 온라인: (배포 후 링크 추가 예정)
-- 직접 실행: 이 폴더를 내려받아 `index.html` 을 더블클릭하세요. (키보드가 필요합니다)
+- 온라인: https://kmathlove-wq.github.io/bubble-bobble-clone/
+- 직접 실행: 이 폴더를 내려받아 `index.html` 을 더블클릭하세요. (키보드 + 마우스가 필요합니다)
 
 ## 조작
 
