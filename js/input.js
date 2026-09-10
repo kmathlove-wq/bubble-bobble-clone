@@ -6,8 +6,11 @@
     ArrowLeft: 'left',
     ArrowRight: 'right',
     ArrowUp: 'jump',
-    Space: 'bubble',
-    KeyZ: 'bubble',
+    KeyA: 'left',
+    KeyD: 'right',
+    KeyW: 'jump',
+    Space: 'jump',        // 스페이스 = 점프
+    KeyZ: 'bubble',       // 마우스 대신 쓸 수 있는 공격키(예비)
     KeyX: 'bubble',
     KeyM: 'mute',
     KeyP: 'pause',
@@ -36,6 +39,19 @@
   window.addEventListener('blur', function () {
     for (var k in held) held[k] = false;
   });
+
+  // 마우스 왼쪽 클릭 = 공격(거품)
+  window.addEventListener('mousedown', function (e) {
+    if (e.button !== 0) return;
+    if (!held.bubble) pressed.bubble = true;
+    held.bubble = true;
+  });
+  window.addEventListener('mouseup', function (e) {
+    if (e.button !== 0) return;
+    held.bubble = false;
+  });
+  // 오른쪽 클릭 메뉴가 게임 위에서 뜨지 않게
+  window.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 
   BB.input = {
     held: function (a) { return !!held[a]; },
