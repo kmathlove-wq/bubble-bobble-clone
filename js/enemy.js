@@ -10,8 +10,8 @@
   var C = BB.CONFIG;
 
   var TYPE = {
-    walker: { speed: 46,  jump: 0.92, fly: false },  // 기본 통통이 (발판 3칸 위까지 점프)
-    hopper: { speed: 40,  jump: 1.00, fly: false },  // 콩콩 뛰며 쫓아옴
+    walker: { speed: 54,  jump: 0.92, fly: false },  // 기본 통통이 (발판 3칸 위까지 점프)
+    hopper: { speed: 46,  jump: 1.00, fly: false },  // 콩콩 뛰며 쫓아옴
     flyer:  { speed: 60,  jump: 0,    fly: true  }   // 발판 무시하고 날아옴
   };
 
@@ -42,6 +42,7 @@
     this.angry = false;
     this.animT = 0;
     this.wantDir = -1;
+    this._descend = null;   // 아래 주인공한테 내려갈 때 향하는 발판 끝 방향
     this.jumpCd = BB.util.rand(0.2, 0.8);
     this.floatT = 0;
     this.stuck = false;
@@ -110,15 +111,23 @@
 
     // 걷는 적
     var dx = pcx - ecx;
-    var playerBelow = player && player.y > this.y + this.h + 18;
-    var playerAbove = player && (player.y + player.h) < this.y - 6;
+    var dy = pcy - ecy;
+    var playerBelow = dy > 20;
+    var playerAbove = dy < -22;
+    var wasOnGround = this.onGround;
 
-    // 방향: 주인공이 거의 바로 아래면 가까운 발판 끝 쪽으로 걸어나가 떨어진다.
-    if (playerBelow && Math.abs(dx) < 22 && level) {
-      this.wantDir = nearestEdgeDir(level, this);
-    } else if (Math.abs(dx) > 10) {
-      this.wantDir = dx > 0 ? 1 : -1;
+    // 방향 정하기 (땅에 있을 때만)
+    if (this.onGround) {
+      if (playerBelow) {
+        // 주인공이 있는 방향으로 걸어가서 발판 끝에서 떨어진다. (공중 될 때까지 방향 유지)
+        if (this._descend == null) this._descend = (dx >= 0 ? 1 : -1);
+        this.wantDir = this._descend;
+      } else {
+        this._descend = null;
+        if (Math.abs(dx) > 8) this.wantDir = dx > 0 ? 1 : -1;
+      }
     }
+    // 공중이면 wantDir 그대로 유지 (걸어 나간 방향으로 낙하)
     this.vx = this.wantDir * spd;
     this.face = this.wantDir > 0 ? 'R' : 'L';
 
@@ -144,6 +153,8 @@
         hb = this.box();
       }
     }
+    // 내려가려는데 벽에 막히면 반대쪽으로 (그쪽 발판 끝에서 떨어짐)
+    if (hitWall && this._descend != null) { this._descend = -this._descend; this.wantDir = this._descend; }
 
     // 세로 이동 + 착지
     this.y += this.vy * dt;
@@ -153,6 +164,12 @@
       if (landY !== null) { this.y = landY - this.h; this.vy = 0; this.onGround = true; }
     }
     BB.util.wrapY(this, C.VH);
+
+    // 방금 착지했고 아직 주인공이 아래면 → 주인공 쪽으로 새로 방향 잡기
+    if (!wasOnGround && this.onGround) {
+      this._descend = playerBelow ? (dx >= 0 ? 1 : -1) : null;
+    }
+    if (!playerBelow) this._descend = null;
 
     // ----- 주인공이 위에 있으면 점프해서 쫓아간다 -----
     this.jumpCd -= dt;
