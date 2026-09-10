@@ -2,17 +2,36 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>내가 만든 버블보블</title>
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="favicon.png">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<canvas id="game" width="512" height="384"></canvas>
+<div id="stage">
+  <canvas id="game" width="512" height="384"></canvas>
+</div>
+
+<!-- 모바일 조작 버튼 (터치 기기에서만 보임) -->
+<div id="touch" hidden>
+  <div class="tpad">
+    <button class="tbtn" data-act="left">◀</button>
+    <button class="tbtn" data-act="right">▶</button>
+  </div>
+  <div class="tpad">
+    <button class="tbtn" data-act="bubble">거품</button>
+    <button class="tbtn" data-act="jump">점프</button>
+  </div>
+</div>
 
 <!-- 로드 순서 중요: util → assets → input → sfx → level → levels → player → bubble → enemy → item → hud → main -->
 <script src="js/util.js"></script>
 <script src="js/assets.js"></script>
 <script src="js/input.js"></script>
+<script src="js/sfx.js"></script>
 <script src="js/level.js"></script>
 <script src="js/levels.js"></script>
 <script src="js/player.js"></script>

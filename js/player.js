@@ -56,6 +56,7 @@
       this.coyote = 0;
       this.jumpHeld = true;
       this.jumpGrace = 0.11;   // 이 동안은 무조건 위로 (짧게 눌러도 최소 높이 확보)
+      if (BB.sfx) BB.sfx.play('jump');
     }
     // 가변 점프: 유예 시간이 끝난 뒤 점프키를 떼고 있으면 상승을 줄인다 (단 최소 높이 보장)
     if (this.jumpHeld && this.jumpGrace <= 0 && !BB.input.held('jump')) {
@@ -129,7 +130,16 @@
       var dirX = this.facing === 'R' ? 1 : -1;
       var mx = this.x + this.w / 2 + dirX * 12;
       var my = this.y + this.h / 2 - 1;
-      BB.bubbles.push(new BB.Bubble(mx, my, dirX, 'normal'));
+      // 가끔 특수 거품 (물·번개·불)
+      var kind = 'normal';
+      var rr = Math.random();
+      if (rr < 0.04) kind = 'water';
+      else if (rr < 0.07) kind = 'lightning';
+      else if (rr < 0.10) kind = 'fire';
+      var bub = new BB.Bubble(mx, my, dirX, kind);
+      bub.rangeMul = this.stats.bubbleRange;
+      bub.riseMul = this.stats.bubbleRise;
+      BB.bubbles.push(bub);
       this.bubbleCooldown = 0.34 / this.stats.bubbleCooldown;
       this.blowT = 0.22;
       if (BB.sfx) BB.sfx.play('blow');
