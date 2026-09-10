@@ -1,16 +1,18 @@
 // ===== enemy.js =====
-// 적 몬스터 (민결이 설계):
-//  - 항상 주인공을 쫓아온다.
-//  - 걷는 그림: 오른쪽=적1↔적2 반복,  왼쪽=적3↔적4 반복
-//  - 방울1(날아가는 거품)에 닿으면 → 적소멸1 로 변해 위로 떠오른다
-//  - 천장에 붙어 좌우로 흔들린다
-//  - 주인공이 닿으면 → 적소멸2 로 죽고 아이템(과일)을 떨군다
-// (M5에서 종류·화난 적·심술고래 추가)
+// 적 몬스터 (민결이 설계 + 엔트리 원작 난이도):
+//  - 항상 주인공을 쫓아온다. 발판 위/아래로도 따라온다(점프·낙하).
+//  - 시간이 지날수록 빨라진다. 마지막 1마리거나 시간이 얼마 안 남으면 "화남"(빨강·더 빠름).
+//  - 걷는 그림: 오른쪽=적1↔적2,  왼쪽=적3↔적4
+//  - 방울1(날아가는 거품)에 닿으면 적소멸1 로 떠올라 천장에 붙어 좌우로 흔들림
+//  - 주인공이 닿으면 적소멸2 로 죽고 과일을 떨군다
+//  - 심술고래(Whale): 판 시간이 다 되면 나타나 무적으로 주인공만 쫓는다.
 (function (BB) {
   var C = BB.CONFIG;
 
   var TYPE = {
-    walker: { speed: 40, jump: 0.62 }
+    walker: { speed: 46,  jump: 0.60, fly: false },  // 기본 통통이
+    hopper: { speed: 40,  jump: 0.92, fly: false },  // 콩콩 뛰며 쫓아옴
+    flyer:  { speed: 62,  jump: 0,    fly: true  }   // 발판 무시하고 날아옴
   };
 
   BB.Enemy = function (type, x, y) {
@@ -22,26 +24,29 @@
     this.vx = -TYPE[this.type].speed;
     this.vy = 0;
     this.onGround = false;
-    this.state = 'walk';      // 'walk' | 'floating' | 'dying'
-    this.face = 'L';          // 'L' | 'R'
+    this.state = 'walk';       // 'walk' | 'floating' | 'dying'
+    this.face = 'L';
     this.angry = false;
     this.animT = 0;
-    this.jumpCd = BB.util.rand(0.4, 1.2);
+    this.wantDir = -1;
+    this.jumpCd = BB.util.rand(0.2, 0.8);
     this.floatT = 0;
-    this.stuck = false;       // 천장에 붙었나
+    this.stuck = false;
     this.wobbleBase = 0;
     this.dyingT = 0;
     this.dead = false;
-    this.dropTier = 1;        // 죽을 때 떨굴 과일 등급 (main 이 정함)
   };
 
   BB.Enemy.prototype.box = function () {
     return { x: this.x, y: this.y, w: this.w, h: this.h };
   };
 
+  // 시간이 지날수록 빨라짐 (main 이 넘겨주는 rush = 0~1)
   BB.Enemy.prototype.speed = function () {
     var s = TYPE[this.type].speed;
-    return this.angry ? s * 1.5 : s;
+    if (this.angry) s *= 1.6;
+    s *= 1 + (BB.game.rush || 0) * 0.6;
+    return s;
   };
 
   BB.Enemy.prototype.update = function (dt, level, player) {
@@ -56,8 +61,7 @@
     if (this.state === 'floating') {
       this.floatT += dt;
       if (!this.stuck) {
-        this.y -= 70 * dt;
-        // 천장(또는 발판 아랫면)에 닿으면 붙는다
+        this.y -= 78 * dt;
         var head = { x: this.x + 2, y: this.y - 4, w: this.w - 4, h: 6 };
         if (this.y <= 6 || (level && level.overlapsSolid(head))) {
           this.stuck = true;
@@ -65,7 +69,6 @@
           if (this.y < 2) this.y = 2;
         }
       } else {
-        // 천장에 붙어 좌우로 흔들
         this.x = this.wobbleBase + Math.sin(this.floatT * 3) * 10;
         this.x = BB.util.clamp(this.x, 2, C.VW - this.w - 2);
       }
@@ -74,11 +77,29 @@
 
     // ===== walk: 항상 주인공을 쫓아온다 =====
     var spd = this.speed();
-    var dir = 0;
-    if (player) dir = (player.x + player.w / 2) > (this.x + this.w / 2) ? 1 : -1;
-    else dir = this.vx > 0 ? 1 : -1;
-    this.vx = dir * spd;
-    this.face = dir > 0 ? 'R' : 'L';
+    var pcx = player ? player.x + player.w / 2 : this.x;
+    var pcy = player ? player.y + player.h / 2 : this.y;
+    var ecx = this.x + this.w / 2;
+    var ecy = this.y + this.h / 2;
+
+    if (TYPE[this.type].fly) {
+      // 날개몬: 주인공을 향해 직선으로 날아옴 (발판 무시)
+      var ang = Math.atan2(pcy - ecy, pcx - ecx);
+      this.vx = Math.cos(ang) * spd;
+      this.vy = Math.sin(ang) * spd;
+      this.x += this.vx * dt;
+      this.y += this.vy * dt;
+      this.x = BB.util.clamp(this.x, 0, C.VW - this.w);
+      BB.util.wrapY(this, C.VH);
+      this.face = this.vx > 0 ? 'R' : 'L';
+      return;
+    }
+
+    // 걷는 적: 방향은 히스테리시스(자잘한 흔들림 무시)
+    var dx = pcx - ecx;
+    if (Math.abs(dx) > 6) this.wantDir = dx > 0 ? 1 : -1;
+    this.vx = this.wantDir * spd;
+    this.face = this.wantDir > 0 ? 'R' : 'L';
 
     // 중력
     this.vy += C.GRAVITY * dt;
@@ -90,8 +111,8 @@
 
     // 가로 이동 + 벽/발판 옆면
     this.x += this.vx * dt;
-    if (this.x <= 0) { this.x = 0; hitWall = true; }
-    if (this.x + this.w >= C.VW) { this.x = C.VW - this.w; hitWall = true; }
+    if (this.x <= 0) { this.x = 0; hitWall = true; this.wantDir = 1; }
+    if (this.x + this.w >= C.VW) { this.x = C.VW - this.w; hitWall = true; this.wantDir = -1; }
     if (level) {
       var hb = this.box();
       for (var i = 0; i < level.solids.length; i++) {
@@ -112,30 +133,45 @@
     }
     BB.util.wrapY(this, C.VH);
 
-    // 벽에 막히거나 / 주인공이 위에 있으면 점프해서 쫓아감
+    // ----- 발판을 넘나들며 쫓아오기 -----
     this.jumpCd -= dt;
     if (this.onGround && this.jumpCd <= 0) {
-      var playerAbove = player && (player.y + player.h) < this.y - 6;
-      if (hitWall || playerAbove || Math.random() < 0.15) {
+      var playerAbove = player && (player.y + player.h) < this.y - 4;
+      var playerBelow = player && (player.y) > this.y + this.h + 6;
+
+      // 발판 끝을 향해 가는 중인지 (더 가면 낭떠러지)
+      var aheadX = this.wantDir > 0 ? this.x + this.w + 3 : this.x - 3;
+      var groundAhead = level && level.overlapsSolid({ x: aheadX, y: this.y + this.h + 1, w: 1, h: 5 });
+
+      if (playerAbove && (hitWall || Math.abs(dx) < 26)) {
+        // 위층으로 점프
+        this.vy = -C.JUMP_V * (TYPE[this.type].jump + (this.angry ? 0.06 : 0));
+        this.jumpCd = BB.util.rand(0.35, 0.9);
+      } else if (playerBelow && !groundAhead) {
+        // 낭떠러지 앞: 그냥 걸어 나가 떨어짐 (주인공에게 내려감)
+        this.jumpCd = 0.15;
+      } else if (hitWall) {
         this.vy = -C.JUMP_V * TYPE[this.type].jump;
-        this.jumpCd = BB.util.rand(0.5, 1.3);
+        this.jumpCd = BB.util.rand(0.3, 0.7);
+      } else if (this.type === 'hopper') {
+        this.vy = -C.JUMP_V * TYPE[this.type].jump * 0.7;
+        this.jumpCd = BB.util.rand(0.15, 0.45);
       } else {
-        this.jumpCd = BB.util.rand(0.3, 0.8);
+        this.jumpCd = BB.util.rand(0.2, 0.6);
       }
     }
   };
 
-  // 방울1 에 닿았을 때
   BB.Enemy.prototype.captureFloat = function () {
     if (this.state !== 'walk') return;
     this.state = 'floating';
     this.floatT = 0;
     this.stuck = false;
     this.vx = 0; this.vy = 0;
+    this.angry = false;
     if (BB.sfx) BB.sfx.play('trap');
   };
 
-  // 주인공이 떠오른 적(적소멸1)에 닿았을 때
   BB.Enemy.prototype.popKill = function () {
     if (this.state !== 'floating') return;
     this.state = 'dying';
@@ -143,17 +179,14 @@
   };
 
   BB.Enemy.prototype.draw = function (ctx) {
-    var img;
-    var dw = 24, dh = 24;
+    var img, dw = 24, dh = 24;
 
     if (this.state === 'dying') {
-      img = BB.assets.images['적소멸2'];
-      if (this.dyingT > 0.18) img = BB.assets.images['적소멸3'] || img;
+      img = BB.assets.images[this.dyingT > 0.18 ? '적소멸3' : '적소멸2'];
     } else if (this.state === 'floating') {
       img = BB.assets.images['적소멸1'];
     } else {
-      // 걷기: 오른쪽=적1↔적2, 왼쪽=적3↔적4
-      var f = Math.floor(this.animT * 7) % 2;
+      var f = Math.floor(this.animT * 8) % 2;
       if (this.face === 'R') img = BB.assets.images[f === 0 ? '적1' : '적2'];
       else                   img = BB.assets.images[f === 0 ? '적3' : '적4'];
     }
@@ -162,13 +195,61 @@
     var dx = this.x + this.w / 2 - dw / 2;
     var dy = this.y + this.h - dh + 2;
 
-    if (this.angry && this.state === 'walk') {
-      ctx.save();
-      ctx.filter = 'brightness(1.15) saturate(1.8) hue-rotate(-45deg)';
-      ctx.drawImage(img, dx, dy, dw, dh);
-      ctx.restore();
-    } else {
-      ctx.drawImage(img, dx, dy, dw, dh);
+    ctx.save();
+    if (this.type === 'flyer' && this.state === 'walk') {
+      ctx.filter = 'hue-rotate(280deg) saturate(1.6)';           // 날개몬: 분홍빛
+    } else if (this.type === 'hopper' && this.state === 'walk') {
+      ctx.filter = 'hue-rotate(90deg) saturate(1.3)';            // 콩콩이: 초록빛
     }
+    if (this.angry && this.state === 'walk') {
+      ctx.filter = 'brightness(1.15) saturate(2) hue-rotate(-50deg)'; // 화남: 빨강
+    }
+    ctx.drawImage(img, dx, dy, dw, dh);
+    ctx.restore();
+  };
+
+  // ===================== 심술고래 =====================
+  BB.Whale = function () {
+    this.w = 40; this.h = 26;
+    // 화면 밖 위에서 등장
+    this.x = BB.util.rand(60, C.VW - 100);
+    this.y = -40;
+    this.speed = 90;
+    this.appearT = 0;
+  };
+  BB.Whale.prototype.box = function () {
+    return { x: this.x + 4, y: this.y + 4, w: this.w - 8, h: this.h - 8 };
+  };
+  BB.Whale.prototype.update = function (dt, player) {
+    this.appearT += dt;
+    if (!player) return;
+    var tx = player.x + player.w / 2 - this.w / 2;
+    var ty = player.y + player.h / 2 - this.h / 2;
+    var ang = Math.atan2(ty - this.y, tx - this.x);
+    var sp = Math.min(this.speed, this.speed * this.appearT); // 서서히 가속
+    this.x += Math.cos(ang) * sp * dt;
+    this.y += Math.sin(ang) * sp * dt;
+  };
+  BB.Whale.prototype.draw = function (ctx) {
+    var x = this.x, y = this.y, w = this.w, h = this.h;
+    ctx.save();
+    ctx.fillStyle = '#eef3ff';
+    ctx.strokeStyle = '#9fb4d8';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    // 꼬리
+    ctx.beginPath();
+    ctx.moveTo(x + w - 4, y + h / 2);
+    ctx.lineTo(x + w + 8, y + 2);
+    ctx.lineTo(x + w + 8, y + h - 2);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // 눈
+    ctx.fillStyle = '#333';
+    ctx.beginPath();
+    ctx.arc(x + 12, y + h / 2 - 2, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   };
 })(window.BB);

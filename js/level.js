@@ -6,11 +6,10 @@
 
   // 글자 → 적 타입
   var ENEMY_CHARS = {
-    '1': 'walker',
-    '2': 'thrower',
-    '3': 'flyer',
-    '4': 'ghost',
-    'E': 'walker' // 옛 표기 호환
+    '1': 'walker',   // 통통이
+    '2': 'hopper',   // 콩콩이 (많이 뜀)
+    '3': 'flyer',    // 날개몬 (발판 무시하고 날아옴)
+    'E': 'walker'
   };
 
   // def = { time, theme, map:[string] }

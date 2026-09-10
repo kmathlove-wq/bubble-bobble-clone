@@ -52,9 +52,12 @@
     BB.bubbles = [];
     BB.fruits = [];
     BB.enemies = [];
+    BB.whale = null;
     BB.game.roundFruitScore = 0;
     BB.game.combo = 0;
     BB.game.comboTimer = 0;
+    BB.game.rush = 0;
+    BB.game.roundElapsed = 0;
     for (var i = 0; i < BB.level.enemySpawns.length; i++) {
       var e = BB.level.enemySpawns[i];
       if (BB.Enemy) BB.enemies.push(new BB.Enemy(e.type, e.x, e.y));
@@ -66,6 +69,9 @@
     var st = BB.level.playerStart;
     BB.player = new BB.Player(st.x, st.y);
     BB.bubbles = [];
+    BB.whale = null;                              // 죽으면 고래는 잠깐 물러남
+    if (BB.level.timeLeft <= 0) BB.level.timeLeft = BB.level.time * 0.4;
+    BB.game.rush = Math.max(0, BB.game.rush - 0.4);
   }
 
   function startGame() {
@@ -164,8 +170,26 @@
       if (BB.input.pressed('pause')) BB.game.paused = !BB.game.paused;
       if (BB.game.paused) return;
 
+      BB.game.roundElapsed += dt;
       BB.level.update(dt);
       BB.player.update(dt, BB.level);
+
+      // --- 난이도: 시간이 지날수록 적이 빨라지고, 얼마 안 남으면 화남 ---
+      var t = BB.level, frac = t.timeLeft / t.time;   // 1 → 0
+      BB.game.rush = BB.util.clamp((1 - frac) * 1.1 + BB.game.roundElapsed / 90, 0, 1.4);
+      var hurry = t.timeLeft <= t.time * 0.28;
+      var lastOne = BB.enemies.length === 1;
+      for (var a = 0; a < BB.enemies.length; a++) {
+        var en = BB.enemies[a];
+        if (en.state === 'walk') en.angry = hurry || lastOne;
+      }
+
+      // --- 심술고래: 시간이 다 되면 등장, 무적으로 주인공만 쫓음 ---
+      if (t.timeLeft <= 0 && !BB.whale && BB.Whale) {
+        BB.whale = new BB.Whale();
+        if (BB.sfx) BB.sfx.play('whale');
+      }
+      if (BB.whale) BB.whale.update(dt, BB.player);
 
       var i, j;
       for (i = 0; i < BB.bubbles.length; i++) BB.bubbles[i].update(dt, BB.level);
@@ -174,12 +198,18 @@
 
       handleCollisions(dt);
 
+      // 심술고래에 닿으면 죽음
+      if (BB.whale && BB.player.invuln <= 0 && BB.util.aabb(BB.player.box(), BB.whale.box())) {
+        playerDie();
+      }
+
       for (j = BB.bubbles.length - 1; j >= 0; j--) if (BB.bubbles[j].dead) BB.bubbles.splice(j, 1);
       for (j = BB.enemies.length - 1; j >= 0; j--) if (BB.enemies[j].dead) BB.enemies.splice(j, 1);
       for (j = BB.fruits.length - 1; j >= 0; j--) if (BB.fruits[j].dead) BB.fruits.splice(j, 1);
 
       // 적을 다 잡았으면 판 클리어
       if (BB.enemies.length === 0 && BB.game.state === 'PLAYING') {
+        BB.whale = null;
         if (BB.sfx) BB.sfx.play('roundClear');
         BB.game.setState('ROUND_CLEAR');
       }
@@ -283,6 +313,20 @@
     if (BB.game.combo >= 2 && BB.game.comboTimer > 0) {
       text(BB.game.combo + ' 연속!', BB.CONFIG.VW - 60, BB.CONFIG.VH - 14, 12, '#ffd23f');
     }
+
+    // 시간 막대 (아래쪽 얇게)
+    if (BB.level) {
+      var frac = BB.util.clamp(BB.level.timeLeft / BB.level.time, 0, 1);
+      var barW = BB.CONFIG.VW - 24;
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.fillRect(12, BB.CONFIG.VH - 4, barW, 3);
+      ctx.fillStyle = frac < 0.28 ? '#ff4444' : '#7dd0ff';
+      ctx.fillRect(12, BB.CONFIG.VH - 4, barW * frac, 3);
+      if (frac < 0.28 && (Math.floor(BB.game.stateTime * 4) % 2) === 0 && BB.level.timeLeft > 0) {
+        text('HURRY!', BB.CONFIG.VW / 2, 28, 16, '#ff5a5a');
+      }
+      if (BB.whale) text('심술고래 등장! 빨리 깨!', BB.CONFIG.VW / 2, 28, 13, '#ffffff');
+    }
   }
 
   // 게임 월드(지형·거품·적·과일·주인공) 그리기
@@ -293,6 +337,7 @@
     for (i = 0; i < BB.fruits.length; i++) BB.fruits[i].draw(ctx);
     for (i = 0; i < BB.bubbles.length; i++) BB.bubbles[i].draw(ctx);
     for (i = 0; i < BB.enemies.length; i++) BB.enemies[i].draw(ctx);
+    if (BB.whale) BB.whale.draw(ctx);
     if (BB.player) BB.player.draw(ctx);
   }
 
