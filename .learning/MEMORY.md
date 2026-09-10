@@ -31,8 +31,17 @@
   심술고래(BB.Whale) = 시간 0에 등장, 무적 추격.
 - 적 그림: 오른쪽=적1↔적2, 왼쪽=적3↔적4 (방향별, 뒤집기 없음).
 - 엔트리 원작 코드 분석함: 연속 스폰 + 적속도 증가 + 추격 + 시간제한 생존형. 변수 17개(생명/점수/시간/적속도 등).
-- 남은 계획: M6(HUD·화면 다듬기), M7(아이템·EXTEND), M8(30판·보스), M9(효과음·배경음악), M10(파비콘·다듬기·커스텀도메인).
-- 파비콘 아직 없음(favicon.ico 404) — M10 에서 추가 예정(사용자 요청).
+- **M0~M10 완료. 재배포 완료.** 게임 전체 흐름 동작(플레이→클리어→다음판→미스→부활→게임오버/엔딩).
+- M6: text() 검은테두리, ROUND CLEAR 점수합산연출, GAME OVER/ENDING 화면, EXTEND HUD.
+- M7: 파워업 7종(shoe/candyYellow·Red·Blue/umbrella/potion/ring) + ExtendLetter 6개→목숨+1. maybeDrop() 로 드랍.
+  player.stats(speed/bubbleRange/bubbleCooldown/bubbleRise) 죽으면 리셋 안 함(현재) — 판 넘어가도 유지.
+- M8: js/levels.js = SKELETONS 4종 + 자동생성 29판 + 보스판(def.boss). BB.Boss(hp10, 졸개소환, 체력바, 방울1 직격으로 hp--).
+  레벨 행은 전부 32칸 — 파이썬 정규화 스크립트로 맞춤(33칸 나오면 안 됨).
+- M9: js/sfx.js = WebAudio 신스 14종 + 배경음악.mp3 루프(첫 입력에 wake). BB.Effect(water/lightning/fire) 특수거품 즉사.
+- 심술고래 그림: assets/이미지/고래.png (94x94, PIL 로 생성). 코드도형 fallback 남김.
+- 모바일: index.html #touch 버튼(BB._setAct), css 반응형, main.js resize 작은화면 fractional scale. favicon.png(PIL 생성).
+- 에셋 18개(고래 추가). 로드순서에 sfx.js 추가(input 다음).
+- 다음 후보: 밸런스 튜닝, 7판 사용자 커스텀, 커스텀 도메인(CNAME), 스프라이트(과일·아이템) 픽셀아트.
 - 물리: GRAVITY 900, JUMP_V 330, 점프 유예 0.11s. 발판 3칸(48px) 간격이면 점프로 닿음.
 - 발판 충돌 규칙: 위에서 착지 O, 옆에서 막힘 O, 아래→위 통과 O (level.js landingY + player.js X충돌).
 - 주인공 그림: 오른쪽=주인공1, 왼쪽=주인공3(뒤집기 안 함), 점프=주인공5, 거품뿜기=주인공2. 걷기 애니 없음.
