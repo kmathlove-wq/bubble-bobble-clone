@@ -83,7 +83,7 @@
       text('로딩... ' + Math.round(BB.game.loadProgress * 100) + '%', BB.CONFIG.VW / 2, BB.CONFIG.VH / 2);
 
     } else if (s === 'TITLE') {
-      text('버블보블', BB.CONFIG.VW / 2, BB.CONFIG.VH / 2 - 20, 24);
+      text('내가 만든 버블보블', BB.CONFIG.VW / 2, BB.CONFIG.VH / 2 - 20, 20);
       text('PUSH SPACE', BB.CONFIG.VW / 2, BB.CONFIG.VH / 2 + 20);
       text('최고 점수  ' + BB.game.hiScore, BB.CONFIG.VW / 2, BB.CONFIG.VH / 2 + 44, 10);
 

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>버블보블 — 순수 로직 테스트</title>
+<style>
+  body { font-family: monospace; background:#111; color:#ddd; padding:16px; }
+  .pass { color:#6f6; } .fail { color:#f66; font-weight:bold; }
+  h1 { font-size:16px; }
+</style>
+</head>
+<body>
+<h1>순수 로직 테스트 (parseLevel, aabb, 점수표)</h1>
+<div id="out"></div>
+
+<script src="js/util.js"></script>
+<script src="js/level.js"></script>
+<script src="js/item.js"></script>
+<script>
+(function () {
+  var out = document.getElementById('out');
+  var passed = 0, failed = 0;
+
+  function check(name, cond) {
+    var div = document.createElement('div');
+    if (cond) { div.className = 'pass'; div.textContent = 'PASS  ' + name; passed++; }
+    else { div.className = 'fail'; div.textContent = 'FAIL  ' + name; failed++; }
+    out.appendChild(div);
+  }
+  function eq(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+
+  // --- aabb ---
+  check('aabb: 겹침', BB.util.aabb({x:0,y:0,w:10,h:10}, {x:5,y:5,w:10,h:10}) === true);
+  check('aabb: 안 겹침', BB.util.aabb({x:0,y:0,w:10,h:10}, {x:20,y:0,w:10,h:10}) === false);
+  check('aabb: 딱 붙음(안 겹침 처리)', BB.util.aabb({x:0,y:0,w:10,h:10}, {x:10,y:0,w:10,h:10}) === false);
+
+  // --- parseLevel ---
+  var lv = BB.parseLevel({ time: 30, theme: 'pink', map: [
+    "#####",
+    "#...#",
+    "#.P.#",
+    "#.1.#",
+    "#####"
+  ]});
+  check('parseLevel: 주인공 시작 위치 = 타일(2,2) → 픽셀(32,32)',
+        lv.playerStart.x === 32 && lv.playerStart.y === 32);
+  check('parseLevel: 적 1마리, 타입 walker, 픽셀(32,48)',
+        lv.enemySpawns.length === 1 &&
+        lv.enemySpawns[0].type === 'walker' &&
+        lv.enemySpawns[0].x === 32 && lv.enemySpawns[0].y === 48);
+  check('parseLevel: time/theme 보존', lv.time === 30 && lv.theme === 'pink');
+
+  // 맨 윗줄 "#####" 은 가로로 병합되어 사각형 1개 (x0 y0 w80 h16)
+  var topRow = lv.solids.filter(function (s) { return s.y === 0; });
+  check('parseLevel: 윗줄 5칸이 사각형 1개로 병합',
+        topRow.length === 1 && topRow[0].x === 0 && topRow[0].w === 80 && topRow[0].h === 16);
+
+  // 왼쪽 벽: 세로줄은 병합 안 하므로 y=16,32,48 에 각각 폭16 사각형
+  var leftWall = lv.solids.filter(function (s) { return s.x === 0 && s.y > 0 && s.y < 64; });
+  check('parseLevel: 왼쪽 벽 3칸', leftWall.length === 3 && leftWall.every(function (s) { return s.w === 16; }));
+
+  // --- 과일 점수표 ---
+  check('fruitTierScore: 1마리 → 100', BB.fruitTierScore(1) === 100);
+  check('fruitTierScore: 3마리 → 500', BB.fruitTierScore(3) === 500);
+  check('fruitTierScore: 6마리 이상 → 3000', BB.fruitTierScore(9) === 3000);
+
+  var h = document.createElement('h1');
+  h.textContent = '결과: ' + passed + ' PASS / ' + failed + ' FAIL';
+  h.className = failed ? 'fail' : 'pass';
+  out.appendChild(h);
+})();
+</script>
+</body>
+</html>
