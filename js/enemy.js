@@ -75,14 +75,15 @@
     if (this.state === 'floating') {
       this.floatT += dt;
       if (!this.stuck) {
-        this.y -= 78 * dt;
-        var head = { x: this.x + 2, y: this.y - 4, w: this.w - 4, h: 6 };
-        if (this.y <= 6 || (level && level.overlapsSolid(head))) {
+        // 발판은 무시하고 화면 맨 위(천장)까지 올라간다
+        this.y -= 90 * dt;
+        if (this.y <= 3) {
+          this.y = 3;
           this.stuck = true;
           this.wobbleBase = this.x;
-          if (this.y < 2) this.y = 2;
         }
       } else {
+        // 천장에 붙어 좌우로 흔들
         this.x = this.wobbleBase + Math.sin(this.floatT * 3) * 10;
         this.x = BB.util.clamp(this.x, 2, C.VW - this.w - 2);
       }
