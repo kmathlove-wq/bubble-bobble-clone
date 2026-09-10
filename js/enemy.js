@@ -75,10 +75,10 @@
     if (this.state === 'floating') {
       this.floatT += dt;
       if (!this.stuck) {
-        // 발판은 무시하고 화면 맨 위(천장)까지 올라간다
+        // 가운데 발판들은 무시하고 위로, 맨 위 핑크 천장(=맨 윗줄 발판, 두께 16px)에 막힌다
         this.y -= 90 * dt;
-        if (this.y <= 3) {
-          this.y = 3;
+        if (this.y <= C.TILE) {
+          this.y = C.TILE;
           this.stuck = true;
           this.wobbleBase = this.x;
         }
